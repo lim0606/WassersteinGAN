@@ -16,6 +16,7 @@ import time
 
 import models.dcgan as dcgan
 import models.mlp as mlp
+import losses.SumLoss as sumloss
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True, help='cifar10 | lsun | imagenet | folder | lfw ')
@@ -137,17 +138,24 @@ if opt.netD != '':
     netD.load_state_dict(torch.load(opt.netD))
 print(netD)
 
+criterion_R = sumloss.SumLoss()
+criterion_F = sumloss.SumLoss(-1)
+criterion_G = sumloss.SumLoss()
+
 input = torch.FloatTensor(opt.batchSize, 3, opt.imageSize, opt.imageSize)
 noise = torch.FloatTensor(opt.batchSize, nz, 1, 1)
 fixed_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1)
-one = torch.FloatTensor([1])
-mone = one * -1
+#one = torch.FloatTensor([1])
+#mone = one * -1
 
 if opt.cuda:
     netD.cuda()
     netG.cuda()
+    criterion_R.cuda()
+    criterion_F.cuda()
+    criterion_G.cuda()
     input = input.cuda()
-    one, mone = one.cuda(), mone.cuda()
+    #one, mone = one.cuda(), mone.cuda()
     noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
 
 input = Variable(input)
@@ -198,17 +206,22 @@ for epoch in range(opt.niter):
             batch_size = real_cpu.size(0)
             input.data.resize_(real_cpu.size()).copy_(real_cpu)
 
-            errD_real = netD(input)
-            errD_real.backward(one)
+            output = netD(input)
+            errD_real = criterion_R(output)
+            #errD_real.backward(one)
+            errD_real.backward()
 
             # train with fake
             noise.data.resize_(batch_size, nz, 1, 1)
             noise.data.normal_(0, 1)
             fake = netG(noise)
             input.data.copy_(fake.data)
-            errD_fake = netD(input)
-            errD_fake.backward(mone)
-            errD = errD_real - errD_fake
+            output = netD(input)
+            errD_fake = criterion_F(output)
+            #errD_fake.backward(mone)
+            errD_fake.backward()
+            #errD = errD_real - errD_fake
+            errD = errD_real + errD_fake
             optimizerD.step()
 
         ############################
@@ -222,8 +235,10 @@ for epoch in range(opt.niter):
         noise.data.resize_(opt.batchSize, nz, 1, 1)
         noise.data.normal_(0, 1)
         fake = netG(noise)
-        errG = netD(fake)
-        errG.backward(one)
+        output = netD(fake)
+        errG = criterion_G(output) 
+        #errG.backward(one)
+        errG.backward()
         optimizerG.step()
         gen_iterations += 1
 
