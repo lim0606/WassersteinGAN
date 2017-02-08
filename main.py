@@ -12,6 +12,7 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 from torch.autograd import Variable
 import os
+import time
 
 import models.dcgan as dcgan
 import models.mlp as mlp
@@ -21,6 +22,7 @@ parser.add_argument('--dataset', required=True, help='cifar10 | lsun | imagenet 
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
 parser.add_argument('--batchSize', type=int, default=64, help='input batch size')
+parser.add_argument('--loadSize',  type=int, default=64, help='the height / width of the input image (it will be croppred)')
 parser.add_argument('--imageSize', type=int, default=64, help='the height / width of the input image to network')
 parser.add_argument('--nz', type=int, default=100, help='size of the latent z vector')
 parser.add_argument('--ngf', type=int, default=64)
@@ -45,8 +47,9 @@ parser.add_argument('--adam', action='store_true', help='Whether to use adam (de
 opt = parser.parse_args()
 print(opt)
 
+os.system('mkdir samples')
 if opt.experiment is None:
-    opt.experiment = 'samples'
+    opt.experiment = 'samples/experiment'
 os.system('mkdir {0}'.format(opt.experiment))
 
 opt.manualSeed = random.randint(1, 10000) # fix seed
@@ -63,7 +66,7 @@ if opt.dataset in ['imagenet', 'folder', 'lfw']:
     # folder dataset
     dataset = dset.ImageFolder(root=opt.dataroot,
                                transform=transforms.Compose([
-                                   transforms.Scale(opt.imageSize),
+                                   transforms.Scale(opt.loadSize),
                                    transforms.CenterCrop(opt.imageSize),
                                    transforms.ToTensor(),
                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -71,7 +74,7 @@ if opt.dataset in ['imagenet', 'folder', 'lfw']:
 elif opt.dataset == 'lsun':
     dataset = dset.LSUN(db_path=opt.dataroot, classes=['bedroom_train'],
                         transform=transforms.Compose([
-                            transforms.Scale(opt.imageSize),
+                            transforms.Scale(opt.loadSize),
                             transforms.CenterCrop(opt.imageSize),
                             transforms.ToTensor(),
                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -82,8 +85,7 @@ elif opt.dataset == 'cifar10':
                                transforms.Scale(opt.imageSize),
                                transforms.ToTensor(),
                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                           ])
-    )
+                           ]))
 assert dataset
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
                                          shuffle=True, num_workers=int(opt.workers))
@@ -156,6 +158,7 @@ for epoch in range(opt.niter):
     data_iter = iter(dataloader)
     i = 0
     while i < len(dataloader):
+        tm_start = time.time()
         ############################
         # (1) Update D network
         ###########################
@@ -175,7 +178,9 @@ for epoch in range(opt.niter):
             for p in netD.parameters():
                 p.data.clamp_(opt.clamp_lower, opt.clamp_upper)
 
+            data_tm_start = time.time()
             data = data_iter.next()
+            data_tm_end   = time.time()
             i += 1
 
             # train with real
@@ -213,9 +218,14 @@ for epoch in range(opt.niter):
         optimizerG.step()
         gen_iterations += 1
 
-        print('[%d/%d][%d/%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f'
-            % (epoch, opt.niter, gen_iterations, len(dataloader),
-            errD.data[0], errG.data[0], errD_real.data[0], errD_fake.data[0]))
+        #print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f'
+        #    % (epoch, opt.niter, i, len(dataloader), gen_iterations, #% (epoch, opt.niter, gen_iterations, len(dataloader),
+        #    errD.data[0], errG.data[0], errD_real.data[0], errD_fake.data[0]))
+        tm_end = time.time()
+        print('Epoch: [%d][%d/%d][%d]\t Time: %.3f  DataTime: %.3f    Loss_G: %f  Loss_D: %f  Loss_D_real: %f  Loss_D_fake %f'
+            % (epoch, i, len(dataloader), gen_iterations,
+               tm_end-tm_start, data_tm_end-data_tm_start,
+            errG.data[0], errD.data[0], errD_real.data[0], errD_fake.data[0]))
         if gen_iterations % 500 == 0:
             vutils.save_image(real_cpu, '{0}/real_samples.png'.format(opt.experiment))
             fake = netG(fixed_noise)
