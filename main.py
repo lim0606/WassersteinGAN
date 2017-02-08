@@ -39,7 +39,8 @@ parser.add_argument('--cuda'  , action='store_true', help='enables cuda')
 parser.add_argument('--ngpu'  , type=int, default=1, help='number of GPUs to use')
 parser.add_argument('--netG', default='', help="path to netG (to continue training)")
 parser.add_argument('--netD', default='', help="path to netD (to continue training)")
-parser.add_argument('--Diters', type=int, default=5, help='number of D iters per each G iter')
+parser.add_argument('--Diters', type=int, default=5, help='number of D iters per loop')
+parser.add_argument('--Giters', type=int, default=1, help='number of G iters per loop')
 parser.add_argument('--noBN', action='store_true', help='use batchnorm or not (only for DCGAN)')
 parser.add_argument('--mlp_G', action='store_true', help='use MLP for G')
 parser.add_argument('--mlp_D', action='store_true', help='use MLP for D')
@@ -241,25 +242,26 @@ for epoch in range(opt.niter):
         ############################
         # (2) Update G network
         ###########################
-        for p in netD.parameters():
-            p.requires_grad = False # to avoid computation
-        netG.zero_grad()
-        # in case our last batch was the tail batch of the dataloader,
-        # make sure we feed a full batch of noise
-        label.data.resize_(opt.batchSize).fill_(real_label)
-        noise.data.resize_(opt.batchSize, nz, 1, 1)
-        noise.data.normal_(0, 1)
-        fake = netG(noise)
-        output = netD(fake)
-        errG = criterion_G(output, label)
-        errG.backward()
-        optimizerG.step()
-        gen_iterations += 1
+        j = 0
+        while j < opt.Giters:
+            j += 1
+            for p in netD.parameters():
+                p.requires_grad = False # to avoid computation
+            netG.zero_grad()
+            # in case our last batch was the tail batch of the dataloader,
+            # make sure we feed a full batch of noise
+            label.data.resize_(opt.batchSize).fill_(real_label)
+            noise.data.resize_(opt.batchSize, nz, 1, 1)
+            noise.data.normal_(0, 1)
+            fake = netG(noise)
+            output = netD(fake)
+            errG = criterion_G(output, label)
+            errG.backward()
+            optimizerG.step()
+            gen_iterations += 1
 
-        #print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f'
-        #    % (epoch, opt.niter, i, len(dataloader), gen_iterations, #% (epoch, opt.niter, gen_iterations, len(dataloader),
-        #    errD.data[0], errG.data[0], errD_real.data[0], errD_fake.data[0]))
         tm_end = time.time()
+
         print('Epoch: [%d][%d/%d][%d]\t Time: %.3f  DataTime: %.3f    Loss_G: %f  Loss_D: %f  Loss_D_real: %f  Loss_D_fake %f'
             % (epoch, i, len(dataloader), gen_iterations,
                tm_end-tm_start, data_tm_end-data_tm_start,
