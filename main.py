@@ -145,8 +145,6 @@ criterion_G = sumloss.SumLoss()
 input = torch.FloatTensor(opt.batchSize, 3, opt.imageSize, opt.imageSize)
 noise = torch.FloatTensor(opt.batchSize, nz, 1, 1)
 fixed_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1)
-#one = torch.FloatTensor([1])
-#mone = one * -1
 
 if opt.cuda:
     netD.cuda()
@@ -155,7 +153,6 @@ if opt.cuda:
     criterion_F.cuda()
     criterion_G.cuda()
     input = input.cuda()
-    #one, mone = one.cuda(), mone.cuda()
     noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
 
 input = Variable(input)
@@ -208,7 +205,6 @@ for epoch in range(opt.niter):
 
             output = netD(input)
             errD_real = criterion_R(output)
-            #errD_real.backward(one)
             errD_real.backward()
 
             # train with fake
@@ -218,9 +214,7 @@ for epoch in range(opt.niter):
             input.data.copy_(fake.data)
             output = netD(input)
             errD_fake = criterion_F(output)
-            #errD_fake.backward(mone)
             errD_fake.backward()
-            #errD = errD_real - errD_fake
             errD = errD_real + errD_fake
             optimizerD.step()
 
@@ -237,7 +231,6 @@ for epoch in range(opt.niter):
         fake = netG(noise)
         output = netD(fake)
         errG = criterion_G(output) 
-        #errG.backward(one)
         errG.backward()
         optimizerG.step()
         gen_iterations += 1
