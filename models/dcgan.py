@@ -47,9 +47,6 @@ class DCGAN_D(nn.Container):
         gpu_ids = None
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
             gpu_ids = range(self.ngpu)
-        #output = nn.parallel.data_parallel(self.main, input, gpu_ids)
-        #output = output.mean(0)
-        #return output.view(1)
         return nn.parallel.data_parallel(self.main, input, gpu_ids)
 
 class DCGAN_G(nn.Container):
