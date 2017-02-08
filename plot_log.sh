@@ -1,13 +1,21 @@
 #!/bin/bash
 
-### celeba 
+### mnist
 # exp1: DCGAN
-rm logs/celeba_dcgan*.pkl
-grep -r "Loss_D_fake" logs/celeba_dcgan_20170208-123330-152273612.log > logs/celeba_dcgan.log
-python plot_log.py -a 1 /home/jaehyun/github/WassersteinGAN/logs logs/celeba_dcgan --data dcgan celeba_dcgan.log
-eog logs/celeba_dcgan_mdisc_medfilt_loss.png
+rm logs/mnist_dcgan*.pkl
+grep -r "Loss_D_fake" logs/mnist_dcgan_20170208-151517-402866840.log > logs/mnist_dcgan.log
+python plot_log.py -a 1 /home/jaehyun/github/WassersteinGAN/logs logs/mnist_dcgan --data dcgan mnist_dcgan.log
+eog logs/mnist_dcgan_mdisc_medfilt_loss.png
 
 
+#### celeba 
+## exp1: DCGAN
+#rm logs/celeba_dcgan*.pkl
+#grep -r "Loss_D_fake" logs/celeba_dcgan_20170208-123330-152273612.log > logs/celeba_dcgan.log
+#python plot_log.py -a 1 /home/jaehyun/github/WassersteinGAN/logs logs/celeba_dcgan --data dcgan celeba_dcgan.log
+#eog logs/celeba_dcgan_mdisc_medfilt_loss.png
+#
+#
 #### cifar10 
 ## exp1: DCGAN
 #rm logs/cifar10_dcgan*.pkl
@@ -36,5 +44,3 @@ eog logs/celeba_dcgan_mdisc_medfilt_loss.png
 #
 ## dcgan vs. mlp
 #python plot_log.py -a 1 /home/jaehyun/github/WassersteinGAN/logs logs/cifar10_dcgan_vs_mlp --data dcgan cifar10_dcgan.log --data mlp cifar10_mlp.log
-#
-#
