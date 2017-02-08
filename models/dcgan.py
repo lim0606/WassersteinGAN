@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.parallel
 
 class DCGAN_D(nn.Container):
-    def __init__(self, isize, nz, nc, ndf, ngpu, n_extra_layers=0):
+    def __init__(self, isize, nz, nc, ndf, ngpu, n_extra_layers=0, add_sigmoid=False):
         super(DCGAN_D, self).__init__()
         self.ngpu = ngpu
         assert isize % 16 == 0, "isize has to be a multiple of 16"
@@ -40,6 +40,12 @@ class DCGAN_D(nn.Container):
         # state size. K x 4 x 4
         main.add_module('final.{0}-{1}.conv'.format(cndf, 1),
                         nn.Conv2d(cndf, 1, 4, 1, 0, bias=False))
+
+        # add sigmoid
+        if add_sigmoid:
+            main.add_module('sigmoid',
+                            nn.Sigmoid())
+
         self.main = main
 
 
@@ -137,6 +143,12 @@ class DCGAN_D_nobn(nn.Container):
         # state size. K x 4 x 4
         main.add_module('final.{0}-{1}.conv'.format(cndf, 1),
                         nn.Conv2d(cndf, 1, 4, 1, 0, bias=False))
+
+        # add sigmoid
+        if add_sigmoid:
+            main.add_module('sigmoid',
+                            nn.Sigmoid())
+
         self.main = main
 
 

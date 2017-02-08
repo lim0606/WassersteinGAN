@@ -19,6 +19,7 @@ import models.mlp as mlp
 import losses.SumLoss as sumloss
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--mode', default='wgan', help='wgan | gan ')
 parser.add_argument('--dataset', required=True, help='cifar10 | lsun | imagenet | folder | lfw ')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
@@ -38,8 +39,6 @@ parser.add_argument('--cuda'  , action='store_true', help='enables cuda')
 parser.add_argument('--ngpu'  , type=int, default=1, help='number of GPUs to use')
 parser.add_argument('--netG', default='', help="path to netG (to continue training)")
 parser.add_argument('--netD', default='', help="path to netD (to continue training)")
-parser.add_argument('--clamp_lower', type=float, default=-0.01)
-parser.add_argument('--clamp_upper', type=float, default=0.01)
 parser.add_argument('--Diters', type=int, default=5, help='number of D iters per each G iter')
 parser.add_argument('--noBN', action='store_true', help='use batchnorm or not (only for DCGAN)')
 parser.add_argument('--mlp_G', action='store_true', help='use MLP for G')
@@ -47,6 +46,12 @@ parser.add_argument('--mlp_D', action='store_true', help='use MLP for D')
 parser.add_argument('--n_extra_layers', type=int, default=0, help='Number of extra layers on gen and disc')
 parser.add_argument('--experiment', default=None, help='Where to store samples and models')
 parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is rmsprop)')
+parser.add_argument('--clamp_lower', type=float, default=-0.01)
+parser.add_argument('--clamp_upper', type=float, default=0.01)
+clamp_parser = parser.add_mutually_exclusive_group(required=False)
+clamp_parser.add_argument('--clamp', dest='clamp', action='store_true')
+clamp_parser.add_argument('--no-clamp', dest='clamp', action='store_false')
+parser.set_defaults(clamp=False)
 opt = parser.parse_args()
 print(opt)
 
@@ -106,6 +111,7 @@ ngf = int(opt.ngf)
 ndf = int(opt.ndf)
 nc = opt.nc 
 n_extra_layers = int(opt.n_extra_layers)
+add_sigmoid = (opt.mode == 'gan')
 
 # custom weights initialization called on netG and netD
 def weights_init(m):
@@ -129,22 +135,32 @@ if opt.netG != '': # load checkpoint if needed
 print(netG)
 
 if opt.mlp_D:
-    netD = mlp.MLP_D(opt.imageSize, nz, nc, ndf, ngpu)
+    netD = mlp.MLP_D(opt.imageSize, nz, nc, ndf, ngpu, add_sigmoid=add_sigmoid)
 else:
-    netD = dcgan.DCGAN_D(opt.imageSize, nz, nc, ndf, ngpu, n_extra_layers)
+    netD = dcgan.DCGAN_D(opt.imageSize, nz, nc, ndf, ngpu, n_extra_layers, add_sigmoid=add_sigmoid)
     netD.apply(weights_init)
 
 if opt.netD != '':
     netD.load_state_dict(torch.load(opt.netD))
 print(netD)
 
-criterion_R = sumloss.SumLoss()
-criterion_F = sumloss.SumLoss(-1)
-criterion_G = sumloss.SumLoss()
+if opt.mode == 'gan':
+    criterion_R = nn.BCELoss()
+    criterion_F = nn.BCELoss()
+    criterion_G = nn.BCELoss()
+elif opt.mode == 'wgan':
+    criterion_R = sumloss.SumLoss()
+    criterion_F = sumloss.SumLoss(-1)
+    criterion_G = sumloss.SumLoss()
+else:
+    raise ValueError('unknown mode: {}'.format(opt.mode))
 
 input = torch.FloatTensor(opt.batchSize, 3, opt.imageSize, opt.imageSize)
 noise = torch.FloatTensor(opt.batchSize, nz, 1, 1)
 fixed_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1)
+label = torch.FloatTensor(opt.batchSize)
+real_label = 1
+fake_label = 0
 
 if opt.cuda:
     netD.cuda()
@@ -152,10 +168,11 @@ if opt.cuda:
     criterion_R.cuda()
     criterion_F.cuda()
     criterion_G.cuda()
-    input = input.cuda()
+    input, label = input.cuda(), label.cuda()
     noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
 
 input = Variable(input)
+label = Variable(label)
 noise = Variable(noise)
 fixed_noise = Variable(fixed_noise)
 
@@ -180,7 +197,7 @@ for epoch in range(opt.niter):
             p.requires_grad = True # they are set to False below in netG update
 
         # train the discriminator Diters times
-        if gen_iterations < 25 or gen_iterations % 500 == 0:
+        if opt.clamp and (gen_iterations < 25 or gen_iterations % 500 == 0):
             Diters = 100
         else:
             Diters = opt.Diters
@@ -189,8 +206,9 @@ for epoch in range(opt.niter):
             j += 1
 
             # clamp parameters to a cube
-            for p in netD.parameters():
-                p.data.clamp_(opt.clamp_lower, opt.clamp_upper)
+            if opt.clamp:
+                for p in netD.parameters():
+                    p.data.clamp_(opt.clamp_lower, opt.clamp_upper)
 
             data_tm_start = time.time()
             data = data_iter.next()
@@ -202,18 +220,20 @@ for epoch in range(opt.niter):
             netD.zero_grad()
             batch_size = real_cpu.size(0)
             input.data.resize_(real_cpu.size()).copy_(real_cpu)
+            label.data.resize_(batch_size).fill_(real_label)
 
             output = netD(input)
-            errD_real = criterion_R(output)
+            errD_real = criterion_R(output, label)
             errD_real.backward()
 
             # train with fake
             noise.data.resize_(batch_size, nz, 1, 1)
             noise.data.normal_(0, 1)
             fake = netG(noise)
+            label.data.fill_(fake_label)
             input.data.copy_(fake.data)
             output = netD(input)
-            errD_fake = criterion_F(output)
+            errD_fake = criterion_F(output, label)
             errD_fake.backward()
             errD = errD_real + errD_fake
             optimizerD.step()
@@ -226,11 +246,12 @@ for epoch in range(opt.niter):
         netG.zero_grad()
         # in case our last batch was the tail batch of the dataloader,
         # make sure we feed a full batch of noise
+        label.data.resize_(opt.batchSize).fill_(real_label)
         noise.data.resize_(opt.batchSize, nz, 1, 1)
         noise.data.normal_(0, 1)
         fake = netG(noise)
         output = netD(fake)
-        errG = criterion_G(output) 
+        errG = criterion_G(output, label)
         errG.backward()
         optimizerG.step()
         gen_iterations += 1

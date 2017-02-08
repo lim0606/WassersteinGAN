@@ -35,7 +35,7 @@ class MLP_G(nn.Container):
 
 
 class MLP_D(nn.Container):
-    def __init__(self, isize, nz, nc, ndf, ngpu):
+    def __init__(self, isize, nz, nc, ndf, ngpu, add_sigmoid=False):
         super(MLP_D, self).__init__()
         self.ngpu = ngpu
 
@@ -49,6 +49,12 @@ class MLP_D(nn.Container):
             nn.ReLU(True),
             nn.Linear(ndf, 1),
         )
+
+        # add sigmoid
+        if add_sigmoid:
+            main.add_module('sigmoid',
+                            nn.Sigmoid())
+
         self.main = main
         self.nc = nc
         self.isize = isize
